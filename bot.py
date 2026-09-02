@@ -6,6 +6,8 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, button
 from dotenv import load_dotenv
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -29,6 +31,18 @@ COOLDOWN_DURATION = 50 * 60
 LAST_STOCK_MESSAGE = None
 PANEL_MESSAGE = None
 PANEL_CHANNEL = None
+
+
+# --- Simple Web Server for Render Health Check ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_server():
+    server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
+    server.serve_forever()
 
 
 # --- Automatically Delete Command Messages (Prefix Only) ---
@@ -391,4 +405,6 @@ async def on_command_error(ctx, error):
 
 
 if __name__ == '__main__':
+    # Start the lightweight background web server for Render's health checks
+    threading.Thread(target=run_server, daemon=True).start()
     bot.run(TOKEN)
