@@ -27,10 +27,11 @@ USER_COOLDOWNS = {}
 # Cooldown duration in seconds (50 minutes = 3000 seconds)
 COOLDOWN_DURATION = 50 * 60  
 
-# Tracks the channel and message objects for panels and stock messages
+# Tracks the channel and message objects for panels, stock messages, and logs
 LAST_STOCK_MESSAGE = None
 PANEL_MESSAGE = None
 PANEL_CHANNEL = None
+LOG_CHANNEL = None
 
 
 # --- Simple Web Server for Render Health Check ---
@@ -170,6 +171,26 @@ class AddStockView(View):
         self.add_item(AddStockSelect())
 
 
+# --- Claim Success Announcement View (Attached to Ephemeral Claim) ---
+class ClaimSuccessView(View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @button(label="Announce Claim", style=discord.ButtonStyle.blurple, emoji="📢", custom_id="announce_claim_btn")
+    async def announce_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        target_channel = LOG_CHANNEL or interaction.channel
+        try:
+            await target_channel.send(f"🎉 Congratulations to {interaction.user.mention} for claiming a prize!")
+            await interaction.response.send_message("✅ Successfully posted your claim announcement!", ephemeral=True)
+            
+            # Disable button after clicking to prevent multiple clicks
+            for child in self.children:
+                child.disabled = True
+            await interaction.message.edit(view=self)
+        except discord.HTTPException:
+            await interaction.response.send_message("❌ Failed to send announcement.", ephemeral=True)
+
+
 # --- Clean Generator Panel View ---
 class GeneratorView(View):
     def __init__(self):
@@ -208,17 +229,21 @@ class GeneratorView(View):
 
         USER_COOLDOWNS[user_id] = current_time + COOLDOWN_DURATION
 
+        success_view = ClaimSuccessView()
+
         if item["type"] == "file":
             file_data = io.BytesIO(item["content"])
             discord_file = discord.File(file_data, filename=item["filename"])
             await interaction.response.send_message(
-                content="🎉 **Here is your claimed item:**",
+                content="🎉 **Here is your claimed item:** (Click below if you want to announce your win!)",
                 file=discord_file,
+                view=success_view,
                 ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                content=f"🎉 **Here is your claimed item:**\n```\n{item['content']}\n```",
+                content=f"🎉 **Here is your claimed item:**\n```\n{item['content']}\n```\n*(Click below if you want to announce your win!)*",
+                view=success_view,
                 ephemeral=True
             )
 
@@ -268,6 +293,13 @@ async def on_ready():
 
 
 # --- HYBRID COMMANDS ---
+
+@bot.hybrid_command(name='setlogchannel', description='Set the channel for logs and public claim announcements.')
+async def set_log_channel(ctx: commands.Context, channel: discord.TextChannel):
+    global LOG_CHANNEL
+    LOG_CHANNEL = channel
+    await ctx.send(f"✅ Log and announcement channel set to {channel.mention}!", ephemeral=True if ctx.interaction else False)
+
 
 @bot.hybrid_command(name='panel', description='Send the item generator panel.')
 async def send_panel(ctx: commands.Context):
