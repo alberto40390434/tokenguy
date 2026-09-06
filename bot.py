@@ -191,7 +191,7 @@ class AddCustomView(View):
         self.add_item(AddCustomSelect())
 
 
-# --- Server Token Panel View ---
+# --- Server Token Panel View (Infinite Stock) ---
 class ServerTokenView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -207,7 +207,8 @@ class ServerTokenView(View):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        token_value = CUSTOM_STOCK_LIST.pop(0)
+        # Grabs the token without removing it, creating infinite stock
+        token_value = CUSTOM_STOCK_LIST[0]
 
         await interaction.response.send_message(
             content=f"🔑 **Here is your server token:**\n```\n{token_value}\n```",
