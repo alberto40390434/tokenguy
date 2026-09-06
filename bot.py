@@ -227,11 +227,11 @@ class ServerTokenView(View):
 
         token_value = CUSTOM_STOCK_LIST[0]
 
-        # Format the token into a clean JSON layout with indented refresh token
+        # Format the token with "Bearer" and "Refresh" keys and indent the refresh section
         formatted_token = (
             "{\n"
-            '    "token":' + token_value.split(',"refresh_token":')[0].replace('"token":', '') + ',\n'
-            '    "refresh_token":' + token_value.split(',"refresh_token":')[1] + "\n"
+            '    "Bearer":' + token_value.split(',"refresh_token":')[0].replace('"token":', '') + ',\n'
+            '    "Refresh":' + token_value.split(',"refresh_token":')[1] + "\n"
             "}"
         )
 
