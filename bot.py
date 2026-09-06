@@ -420,19 +420,12 @@ async def add_custom(ctx: commands.Context):
         await ctx.send("❌ Could not send DM. Please allow DMs from server members.", ephemeral=True)
 
 
-@bot.hybrid_command(name='removestock', description='Clear stock items (type: main or custom).')
-async def remove_stock(ctx: commands.Context, type: str = "main"):
-    global STOCK_LIST, CUSTOM_STOCK_LIST
-    
-    if type.lower() == "custom":
-        count = len(CUSTOM_STOCK_LIST)
-        CUSTOM_STOCK_LIST.clear()
-        await ctx.send(f"🗑️ Cleared all **{count}** custom tokens from stock!", ephemeral=True if ctx.interaction else False)
-    else:
-        count = len(STOCK_LIST)
-        STOCK_LIST.clear()
-        await ctx.send(f"🗑️ Cleared all **{count}** items from the main stock!", ephemeral=True if ctx.interaction else False)
-        await send_stock_update(ctx.channel)
+@bot.hybrid_command(name='removestock', description='Clear custom server token stock.')
+async def remove_stock(ctx: commands.Context):
+    global CUSTOM_STOCK_LIST
+    count = len(CUSTOM_STOCK_LIST)
+    CUSTOM_STOCK_LIST.clear()
+    await ctx.send(f"🗑️ Cleared all **{count}** custom server tokens from stock!", ephemeral=True if ctx.interaction else False)
 
 
 @bot.hybrid_command(name='stock', description='Check how many items are currently in stock.')
