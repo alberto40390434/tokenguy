@@ -2,6 +2,8 @@ import os
 import io
 import asyncio
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import discord
 from discord.ext import commands
 from discord.ui import View, Select, button
@@ -32,6 +34,22 @@ COOLDOWN_DURATION = 50 * 60
 LAST_STOCK_MESSAGE = None
 PANEL_MESSAGE = None
 PANEL_CHANNEL = None
+
+
+# --- Dummy Web Server to satisfy Render's Web Service port check ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_web_server():
+    server_address = ('0.0.0.0', 10000)
+    httpd = HTTPServer(server_address, SimpleHandler)
+    httpd.serve_forever()
+
+# Start the dummy web server in a separate thread so it doesn't block the bot
+threading.Thread(target=run_web_server, daemon=True).start()
 
 
 # --- Automatically Delete Command Messages (Prefix Only) ---
@@ -191,7 +209,7 @@ class AddCustomView(View):
         self.add_item(AddCustomSelect())
 
 
-# --- Server Token Panel View (Infinite Stock) ---
+# --- Server Token Panel View (Infinite Stock sent to DMs) ---
 class ServerTokenView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -209,10 +227,19 @@ class ServerTokenView(View):
 
         token_value = CUSTOM_STOCK_LIST[0]
 
-        await interaction.response.send_message(
-            content=f"🔑 **Here is your server token:**\n```\n{token_value}\n```",
-            ephemeral=True
-        )
+        try:
+            await interaction.user.send(
+                content=f"🔑 **Here is your server token:**\n```\n{token_value}\n```"
+            )
+            await interaction.response.send_message(
+                "✅ Check your DMs! I've sent your server token there.",
+                ephemeral=True
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "❌ I couldn't send you a DM! Please open your DMs from server members and try again.",
+                ephemeral=True
+            )
 
 
 # --- Clean Generator Panel View ---
