@@ -6,8 +6,6 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, button
 from dotenv import load_dotenv
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -21,29 +19,19 @@ bot = commands.Bot(command_prefix='$', intents=intents)
 # Main stock list
 STOCK_LIST = []
 
+# Custom token stock list
+CUSTOM_STOCK_LIST = []
+
 # Tracks cooldowns: { user_id: timestamp_when_cooldown_ends }
 USER_COOLDOWNS = {}
 
 # Cooldown duration in seconds (50 minutes = 3000 seconds)
 COOLDOWN_DURATION = 50 * 60  
 
-# Tracks the channel and message objects for panels, stock messages, and logs
+# Tracks the channel and message objects for panels and stock messages
 LAST_STOCK_MESSAGE = None
 PANEL_MESSAGE = None
 PANEL_CHANNEL = None
-LOG_CHANNEL = None
-
-
-# --- Simple Web Server for Render Health Check ---
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-
-def run_server():
-    server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
-    server.serve_forever()
 
 
 # --- Automatically Delete Command Messages (Prefix Only) ---
@@ -171,24 +159,60 @@ class AddStockView(View):
         self.add_item(AddStockSelect())
 
 
-# --- Claim Success Announcement View (Attached to Ephemeral Claim) ---
-class ClaimSuccessView(View):
+# --- Add Custom Token Menu ---
+class AddCustomSelect(Select):
     def __init__(self):
-        super().__init__(timeout=180)
+        options = [
+            discord.SelectOption(label="Server Token", description="Add a custom server token in DM", emoji="🔑"),
+        ]
+        super().__init__(placeholder="Select what to add...", options=options)
 
-    @button(label="Announce Claim", style=discord.ButtonStyle.blurple, emoji="📢", custom_id="announce_claim_btn")
-    async def announce_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        target_channel = LOG_CHANNEL or interaction.channel
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.view.author:
+            await interaction.response.send_message("❌ This menu is not for you!", ephemeral=True)
+            return
+
+        def check_dm(m):
+            return m.author == interaction.user and isinstance(m.channel, discord.DMChannel)
+
+        await interaction.response.send_message("🔑 Please paste your custom server token below:")
         try:
-            await target_channel.send(f"🎉 Congratulations to {interaction.user.mention} for claiming a prize!")
-            await interaction.response.send_message("✅ Successfully posted your claim announcement!", ephemeral=True)
-            
-            # Disable button after clicking to prevent multiple clicks
-            for child in self.children:
-                child.disabled = True
-            await interaction.message.edit(view=self)
-        except discord.HTTPException:
-            await interaction.response.send_message("❌ Failed to send announcement.", ephemeral=True)
+            msg = await bot.wait_for('message', check=check_dm, timeout=120.0)
+            CUSTOM_STOCK_LIST.append(msg.content)
+            await msg.reply(f"✅ Custom token added! Total custom tokens in stock: `{len(CUSTOM_STOCK_LIST)}`")
+        except asyncio.TimeoutError:
+            await interaction.followup.send("⏰ Timed out.")
+
+
+class AddCustomView(View):
+    def __init__(self, author):
+        super().__init__(timeout=120)
+        self.author = author
+        self.add_item(AddCustomSelect())
+
+
+# --- Server Token Panel View ---
+class ServerTokenView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @button(label="Get Server Token", style=discord.ButtonStyle.success, emoji="🔑", custom_id="server_token_button")
+    async def server_token_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not CUSTOM_STOCK_LIST:
+            embed = discord.Embed(
+                title="❌ Out of Stock",
+                description="There are currently no custom server tokens available. Check back later!",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        token_value = CUSTOM_STOCK_LIST.pop(0)
+
+        await interaction.response.send_message(
+            content=f"🔑 **Here is your server token:**\n```\n{token_value}\n```",
+            ephemeral=True
+        )
 
 
 # --- Clean Generator Panel View ---
@@ -229,21 +253,17 @@ class GeneratorView(View):
 
         USER_COOLDOWNS[user_id] = current_time + COOLDOWN_DURATION
 
-        success_view = ClaimSuccessView()
-
         if item["type"] == "file":
             file_data = io.BytesIO(item["content"])
             discord_file = discord.File(file_data, filename=item["filename"])
             await interaction.response.send_message(
-                content="🎉 **Here is your claimed item:** (Click below if you want to announce your win!)",
+                content="🎉 **Here is your claimed item:**",
                 file=discord_file,
-                view=success_view,
                 ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                content=f"🎉 **Here is your claimed item:**\n```\n{item['content']}\n```\n*(Click below if you want to announce your win!)*",
-                view=success_view,
+                content=f"🎉 **Here is your claimed item:**\n```\n{item['content']}\n```",
                 ephemeral=True
             )
 
@@ -294,13 +314,6 @@ async def on_ready():
 
 # --- HYBRID COMMANDS ---
 
-@bot.hybrid_command(name='setlogchannel', description='Set the channel for logs and public claim announcements.')
-async def set_log_channel(ctx: commands.Context, channel: discord.TextChannel):
-    global LOG_CHANNEL
-    LOG_CHANNEL = channel
-    await ctx.send(f"✅ Log and announcement channel set to {channel.mention}!", ephemeral=True if ctx.interaction else False)
-
-
 @bot.hybrid_command(name='panel', description='Send the item generator panel.')
 async def send_panel(ctx: commands.Context):
     global PANEL_MESSAGE
@@ -331,6 +344,23 @@ async def send_panel(ctx: commands.Context):
         PANEL_MESSAGE = await ctx.send(embed=embed, view=GeneratorView())
 
     await send_stock_update(ctx.channel)
+
+
+@bot.hybrid_command(name='custompanel', description='Send the server token panel.')
+async def custom_panel(ctx: commands.Context):
+    embed = discord.Embed(
+        title="🔑 Server Token Panel",
+        description="Click the button below to get our server token!",
+        color=discord.Color.blurple()
+    )
+    
+    embed.set_footer(text="Server Token System", icon_url=bot.user.display_avatar.url)
+    
+    if ctx.interaction:
+        await ctx.send("✅ Panel deployed!", ephemeral=True)
+        await ctx.channel.send(embed=embed, view=ServerTokenView())
+    else:
+        await ctx.send(embed=embed, view=ServerTokenView())
 
 
 @bot.hybrid_command(name='delpanel', description='Delete the active generator panel and stock update.')
@@ -373,6 +403,19 @@ async def add_stock(ctx: commands.Context):
     try:
         await ctx.author.send("How would you like to add stock?", view=view)
         await ctx.send("📥 Check your DMs to add stock!", ephemeral=True if ctx.interaction else False, delete_after=None if ctx.interaction else 10)
+    except discord.Forbidden:
+        await ctx.send("❌ Could not send DM. Please allow DMs from server members.", ephemeral=True)
+
+
+@bot.hybrid_command(name='addcustom', description='Add new custom server tokens via DM.')
+async def add_custom(ctx: commands.Context):
+    if isinstance(ctx.channel, discord.DMChannel):
+        return
+
+    view = AddCustomView(author=ctx.author)
+    try:
+        await ctx.author.send("How would you like to add the custom server token?", view=view)
+        await ctx.send("📥 Check your DMs to add the custom token!", ephemeral=True if ctx.interaction else False, delete_after=None if ctx.interaction else 10)
     except discord.Forbidden:
         await ctx.send("❌ Could not send DM. Please allow DMs from server members.", ephemeral=True)
 
@@ -437,6 +480,4 @@ async def on_command_error(ctx, error):
 
 
 if __name__ == '__main__':
-    # Start the lightweight background web server for Render's health checks
-    threading.Thread(target=run_server, daemon=True).start()
     bot.run(TOKEN)
