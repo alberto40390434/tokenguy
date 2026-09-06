@@ -207,7 +207,6 @@ class ServerTokenView(View):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        # Grabs the token without removing it, creating infinite stock
         token_value = CUSTOM_STOCK_LIST[0]
 
         await interaction.response.send_message(
@@ -421,10 +420,25 @@ async def add_custom(ctx: commands.Context):
         await ctx.send("❌ Could not send DM. Please allow DMs from server members.", ephemeral=True)
 
 
+@bot.hybrid_command(name='removestock', description='Clear stock items (type: main or custom).')
+async def remove_stock(ctx: commands.Context, type: str = "main"):
+    global STOCK_LIST, CUSTOM_STOCK_LIST
+    
+    if type.lower() == "custom":
+        count = len(CUSTOM_STOCK_LIST)
+        CUSTOM_STOCK_LIST.clear()
+        await ctx.send(f"🗑️ Cleared all **{count}** custom tokens from stock!", ephemeral=True if ctx.interaction else False)
+    else:
+        count = len(STOCK_LIST)
+        STOCK_LIST.clear()
+        await ctx.send(f"🗑️ Cleared all **{count}** items from the main stock!", ephemeral=True if ctx.interaction else False)
+        await send_stock_update(ctx.channel)
+
+
 @bot.hybrid_command(name='stock', description='Check how many items are currently in stock.')
 async def check_stock(ctx: commands.Context):
     embed = discord.Embed(
-        description=f"📦 Current items in stock: `{len(STOCK_LIST)}`",
+        description=f"📦 Current items in stock: `{len(STOCK_LIST)}` | Custom tokens: `{len(CUSTOM_STOCK_LIST)}`",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, ephemeral=True if ctx.interaction else False)
