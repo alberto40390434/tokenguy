@@ -209,7 +209,7 @@ class AddCustomView(View):
         self.add_item(AddCustomSelect())
 
 
-# --- Server Token Panel View (Infinite Stock sent to DMs) ---
+# --- Server Token Panel View (Infinite Stock sent to DMs with Formatted JSON) ---
 class ServerTokenView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -227,9 +227,17 @@ class ServerTokenView(View):
 
         token_value = CUSTOM_STOCK_LIST[0]
 
+        # Format the token into a clean JSON layout with indented refresh token
+        formatted_token = (
+            "{\n"
+            '    "token":' + token_value.split(',"refresh_token":')[0].replace('"token":', '') + ',\n'
+            '    "refresh_token":' + token_value.split(',"refresh_token":')[1] + "\n"
+            "}"
+        )
+
         try:
             await interaction.user.send(
-                content=f"🔑 **Here is your server token:**\n```\n{token_value}\n```"
+                content=f"🔑 **Here is your server token:**\n```json\n{formatted_token}\n```"
             )
             await interaction.response.send_message(
                 "✅ Check your DMs! I've sent your server token there.",
@@ -362,7 +370,7 @@ async def send_panel(ctx: commands.Context):
         inline=True
     )
 
-    embed.set_footer(text="Automated Generator System • Powered by Floopy :)", icon_url=bot.user.display_avatar.url)
+    embed.set_footer(text="Automated Generator System", icon_url=bot.user.display_avatar.url)
     
     if ctx.interaction:
         await ctx.send("✅ Panel deployed!", ephemeral=True)
