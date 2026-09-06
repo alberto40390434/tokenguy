@@ -209,7 +209,7 @@ class AddCustomView(View):
         self.add_item(AddCustomSelect())
 
 
-# --- Server Token Panel View (Infinite Stock sent to DMs with Formatted JSON) ---
+# --- Server Token Panel View (Infinite Stock sent to DMs with Formatted JSON and Mobile Button) ---
 class ServerTokenView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -227,7 +227,6 @@ class ServerTokenView(View):
 
         token_value = CUSTOM_STOCK_LIST[0]
 
-        # Format the token with "Bearer" and "Refresh" keys and indent the refresh section
         formatted_token = (
             "{\n"
             '    "Bearer":' + token_value.split(',"refresh_token":')[0].replace('"token":', '') + ',\n'
@@ -241,6 +240,36 @@ class ServerTokenView(View):
             )
             await interaction.response.send_message(
                 "✅ Check your DMs! I've sent your server token there.",
+                ephemeral=True
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "❌ I couldn't send you a DM! Please open your DMs from server members and try again.",
+                ephemeral=True
+            )
+
+    @button(label="Mobile", style=discord.ButtonStyle.secondary, emoji="📱", custom_id="server_token_mobile_button")
+    async def server_token_mobile_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not CUSTOM_STOCK_LIST:
+            embed = discord.Embed(
+                title="❌ Out of Stock",
+                description="There are currently no custom server tokens available. Check back later!",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        token_value = CUSTOM_STOCK_LIST[0]
+
+        bearer_part = token_value.split(',"refresh_token":')[0].replace('"token":', '').strip('"')
+        refresh_part = token_value.split(',"refresh_token":')[1].strip('"')
+
+        try:
+            await interaction.user.send(
+                content=f"🔑 **Bearer Token:**\n{bearer_part}\n\n🔄 **Refresh Token:**\n{refresh_part}"
+            )
+            await interaction.response.send_message(
+                "✅ Check your DMs! I've sent your mobile-friendly tokens there.",
                 ephemeral=True
             )
         except discord.Forbidden:
